@@ -1,0 +1,51 @@
+:root {
+  --surface: #fffaf2;
+  --canvas: #f2efe9;
+  --line: #d3cec4;
+  --ink-900: #22202a;
+  --ink-700: #3a3745;
+  --ink-600: #5e5b69;
+  --accent-800: #005544;
+  --accent-700: #02654f;
+  --accent-600: #03795f;
+  --accent-500: #049476;
+  --accent-400: #39ad92;
+  --accent-200: #9fd4c6;
+  --accent-100: #d9eee8;
+  --danger-700: #8b1e2d;
+  --danger-200: #efbec7;
+  --danger-100: #fbe5ea;
+  font-family: 'IBM Plex Sans', 'Trebuchet MS', 'Segoe UI', sans-serif;
+  color: var(--ink-900);
+  line-height: 1.4;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: radial-gradient(circle at top left, #fff8dd, transparent 35%),
+    radial-gradient(circle at right, #dceee7, transparent 45%), var(--canvas);
+}
+
+#root {
+  min-height: 100vh;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+h1,
+h2 {
+  font-family: 'Source Serif 4', Georgia, serif;
+}
