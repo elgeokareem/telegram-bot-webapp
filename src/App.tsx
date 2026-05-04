@@ -27,6 +27,18 @@ const defaultReminder: ReminderInput = {
   isActive: true,
 }
 
+const getSubmitErrorMessage = (error?: string) => {
+  if (!error) {
+    return 'Failed to create event. Check API response.'
+  }
+
+  if (error.includes('Telegram WebApp context') || error.includes('verified Telegram context')) {
+    return 'Open this form from the fresh /new_event link in Telegram so the bot can attach the chat context.'
+  }
+
+  return error
+}
+
 function App() {
   const [type, setType] = useState<EventType>('custom')
   const [title, setTitle] = useState('')
@@ -163,6 +175,12 @@ function App() {
     setSubmitMessage('')
     setSubmitStatus('success')
 
+    if (!telegramContext.initData && !telegramContext.contextToken) {
+      setSubmitStatus('error')
+      setSubmitMessage('Open this form from the fresh /new_event link in Telegram so the bot can attach the chat context.')
+      return
+    }
+
     try {
       const response = await fetch(`${ENV.apiBaseUrl}/api/v1/events`, {
         method: 'POST',
@@ -177,7 +195,7 @@ function App() {
       if (!response.ok) {
         const body = (await response.json().catch(() => null)) as { error?: string; details?: string } | null
         setSubmitStatus('error')
-        setSubmitMessage(body?.error ?? 'Failed to create event. Check API response.')
+        setSubmitMessage(getSubmitErrorMessage(body?.error))
         return
       }
 
