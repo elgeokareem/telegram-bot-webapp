@@ -15,6 +15,7 @@ type ReminderInput = {
 type TelegramContext = {
   chatId: number | null
   createdByUserId: number | null
+  initData: string
 }
 
 const defaultReminder: ReminderInput = {
@@ -40,7 +41,7 @@ function App() {
   const [submitMessage, setSubmitMessage] = useState('')
 
   const telegramContext = useMemo<TelegramContext>(() => {
-    const telegram = (window as { Telegram?: { WebApp?: { initDataUnsafe?: unknown } } }).Telegram?.WebApp
+    const telegram = (window as { Telegram?: { WebApp?: { initData?: string; initDataUnsafe?: unknown } } }).Telegram?.WebApp
     const initData = telegram?.initDataUnsafe as
       | { user?: { id?: number }; chat?: { id?: number } }
       | undefined
@@ -48,14 +49,15 @@ function App() {
     return {
       chatId: typeof initData?.chat?.id === 'number' ? initData.chat.id : null,
       createdByUserId: typeof initData?.user?.id === 'number' ? initData.user.id : null,
+      initData: telegram?.initData ?? '',
     }
   }, [])
 
   const payloadPreview = useMemo(
     () => ({
       event: {
-        chat_id: telegramContext.chatId,
-        created_by_user_id: telegramContext.createdByUserId,
+        chat_id: null,
+        created_by_user_id: null,
         target_user_id: null,
         type,
         title,
@@ -160,6 +162,7 @@ function App() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-Telegram-Init-Data': telegramContext.initData,
         },
         body: JSON.stringify(payloadPreview),
       })
