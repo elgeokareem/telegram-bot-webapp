@@ -16,7 +16,10 @@ type TelegramContext = {
   chatId: number | null
   createdByUserId: number | null
   initData: string
+  contextToken: string
 }
+
+type SubmitStatus = 'success' | 'error'
 
 const defaultReminder: ReminderInput = {
   offsetMinutes: 0,
@@ -39,6 +42,7 @@ function App() {
   const [occurrenceCount, setOccurrenceCount] = useState('')
   const [reminders, setReminders] = useState<ReminderInput[]>([defaultReminder])
   const [submitMessage, setSubmitMessage] = useState('')
+  const [submitStatus, setSubmitStatus] = useState<SubmitStatus>('success')
 
   const telegramContext = useMemo<TelegramContext>(() => {
     const telegram = (window as { Telegram?: { WebApp?: { initData?: string; initDataUnsafe?: unknown } } }).Telegram?.WebApp
@@ -50,6 +54,7 @@ function App() {
       chatId: typeof initData?.chat?.id === 'number' ? initData.chat.id : null,
       createdByUserId: typeof initData?.user?.id === 'number' ? initData.user.id : null,
       initData: telegram?.initData ?? '',
+      contextToken: new URLSearchParams(window.location.search).get('ctx') ?? '',
     }
   }, [])
 
@@ -156,6 +161,7 @@ function App() {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setSubmitMessage('')
+    setSubmitStatus('success')
 
     try {
       const response = await fetch(`${ENV.apiBaseUrl}/api/v1/events`, {
@@ -163,23 +169,29 @@ function App() {
         headers: {
           'Content-Type': 'application/json',
           'X-Telegram-Init-Data': telegramContext.initData,
+          'X-WebApp-Context': telegramContext.contextToken,
         },
         body: JSON.stringify(payloadPreview),
       })
 
       if (!response.ok) {
-        setSubmitMessage('Failed to create event. Check API response.')
+        const body = (await response.json().catch(() => null)) as { error?: string; details?: string } | null
+        setSubmitStatus('error')
+        setSubmitMessage(body?.error ?? 'Failed to create event. Check API response.')
         return
       }
 
+      setSubmitStatus('success')
       setSubmitMessage('Event created successfully.')
     } catch {
+      setSubmitStatus('error')
       setSubmitMessage('Unable to reach server. Verify VITE_API_BASE_URL.')
     }
   }
 
   return (
     <main className="layout">
+      {submitMessage ? <div className={`toast ${submitStatus}`} role="status">{submitMessage}</div> : null}
       <header className="hero">
         <p className="eyebrow">{ENV.appName}</p>
         <h1>Create Event</h1>
@@ -193,7 +205,7 @@ function App() {
             Chat and creator IDs are inferred from Telegram WebApp context and are not manually entered.
           </p>
           <p className="hint">
-            Source context: chat {telegramContext.chatId ?? 'n/a'} - user {telegramContext.createdByUserId ?? 'n/a'}
+            Source context: chat {telegramContext.chatId ?? 'signed link'} - user {telegramContext.createdByUserId ?? 'signed link'}
           </p>
           <div className="grid two">
             <label>
@@ -351,7 +363,7 @@ function App() {
           <button type="submit" className="primary">
             Create Event
           </button>
-          {submitMessage ? <p className="submit-message">{submitMessage}</p> : null}
+          {submitMessage ? <p className={`submit-message ${submitStatus}`}>{submitMessage}</p> : null}
           <pre>{JSON.stringify(payloadPreview, null, 2)}</pre>
         </section>
       </form>

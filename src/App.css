@@ -128,6 +128,38 @@ button {
   color: var(--ink-700);
 }
 
+.submit-message.error {
+  color: var(--danger-700);
+}
+
+.submit-message.success {
+  color: var(--accent-700);
+}
+
+.toast {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 20;
+  max-width: min(360px, calc(100vw - 2rem));
+  padding: 0.8rem 1rem;
+  border-radius: 10px;
+  box-shadow: 0 12px 36px rgba(15, 23, 42, 0.2);
+  font-weight: 700;
+}
+
+.toast.error {
+  background: var(--danger-100);
+  color: var(--danger-700);
+  border: 1px solid var(--danger-200);
+}
+
+.toast.success {
+  background: var(--accent-100);
+  color: var(--accent-800);
+  border: 1px solid var(--accent-200);
+}
+
 .hint {
   color: var(--ink-600);
 }
