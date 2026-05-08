@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
+import DatePicker from 'react-datepicker'
+import 'react-datepicker/dist/react-datepicker.css'
 import { ENV } from './config/env'
+import { TIMEZONE_GROUPS, detectTimezone } from './constants/timezones'
 import './App.css'
 
 type EventType = 'birthday' | 'reminder' | 'custom'
@@ -27,6 +30,54 @@ const defaultReminder: ReminderInput = {
   isActive: true,
 }
 
+function toDateString(date: Date): string {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-')
+}
+
+function toDatetimeString(date: Date): string {
+  return `${toDateString(date)}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
+function formatDatetimePreview(
+  date: Date,
+  timezone: string,
+  isAllDay: boolean,
+): string {
+  const weekday = date.toLocaleDateString('en-US', { weekday: 'long', timeZone: timezone })
+  const monthDay = date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: timezone,
+  })
+
+  if (isAllDay) {
+    return `${weekday}, ${monthDay}`
+  }
+
+  const time = date.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: timezone,
+  })
+
+  return `${weekday}, ${monthDay} at ${time}`
+}
+
+function timezoneOffsetLabel(timezone: string, date: Date): string {
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    timeZoneName: 'shortOffset',
+  })
+  const parts = fmt.formatToParts(date)
+  const offset = parts.find((p) => p.type === 'timeZoneName')?.value ?? ''
+  return offset.startsWith('GMT') ? offset : `GMT${offset}`
+}
+
 const getSubmitErrorMessage = (error?: string) => {
   if (!error) {
     return 'Failed to create event. Check API response.'
@@ -44,17 +95,19 @@ function App() {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [isAllDay, setIsAllDay] = useState(false)
-  const [eventDate, setEventDate] = useState('')
-  const [eventAt, setEventAt] = useState('')
-  const [timezone, setTimezone] = useState(ENV.defaultTimezone)
+  const [eventDatetime, setEventDatetime] = useState<Date | null>(null)
+  const [timezone, setTimezone] = useState(detectTimezone)
   const [isActive, setIsActive] = useState(true)
   const [frequency, setFrequency] = useState<RecurrenceType>('none')
   const [intervalValue, setIntervalValue] = useState(1)
-  const [untilAt, setUntilAt] = useState('')
+  const [untilAt, setUntilAt] = useState<Date | null>(null)
   const [occurrenceCount, setOccurrenceCount] = useState('')
   const [reminders, setReminders] = useState<ReminderInput[]>([defaultReminder])
   const [submitMessage, setSubmitMessage] = useState('')
   const [submitStatus, setSubmitStatus] = useState<SubmitStatus>('success')
+  const [showSubmitInfo, setShowSubmitInfo] = useState(false)
+  const [showRecurrenceOptions, setShowRecurrenceOptions] = useState(false)
+  const [showReminderOptions, setShowReminderOptions] = useState(false)
 
   const telegramContext = useMemo<TelegramContext>(() => {
     const telegram = (window as { Telegram?: { WebApp?: { initData?: string; initDataUnsafe?: unknown } } }).Telegram?.WebApp
@@ -80,15 +133,15 @@ function App() {
         title,
         description: description || null,
         is_all_day: isAllDay,
-        event_date: isAllDay ? eventDate || null : null,
-        event_at: isAllDay ? null : eventAt || null,
+        event_date: isAllDay && eventDatetime ? toDateString(eventDatetime) : null,
+        event_at: !isAllDay && eventDatetime ? toDatetimeString(eventDatetime) : null,
         timezone,
         is_active: isActive,
       },
       recurrence: {
         frequency,
         interval_value: intervalValue,
-        until_at: untilAt || null,
+        until_at: untilAt ? toDatetimeString(untilAt) : null,
         occurrence_count: occurrenceCount ? Number(occurrenceCount) : null,
       },
       reminders: reminders.map((r) => ({
@@ -98,13 +151,11 @@ function App() {
       })),
     }),
     [
-      telegramContext,
       type,
       title,
       description,
       isAllDay,
-      eventDate,
-      eventAt,
+      eventDatetime,
       timezone,
       isActive,
       frequency,
@@ -170,6 +221,49 @@ function App() {
     })
   }
 
+  const handleEventTypeChange = (nextType: EventType) => {
+    setType(nextType)
+
+    if (nextType === 'birthday') {
+      setTitle('Happy Birthday!!! \u{1F382}\u{1F389}\u{1F382}')
+      setDescription('Don\u2019t forget to wish them a happy birthday!')
+      setIsAllDay(true)
+      setEventDatetime(new Date())
+      setFrequency('yearly')
+      setIntervalValue(1)
+      setUntilAt(null)
+      setOccurrenceCount('')
+      setReminders([
+        { offsetMinutes: -1440, messageTemplate: '', isActive: true },
+        { offsetMinutes: 0, messageTemplate: '', isActive: true },
+      ])
+      return
+    }
+
+    if (nextType === 'reminder') {
+      setTitle('Time to\u2026')
+      setDescription('')
+      setIsAllDay(false)
+      setEventDatetime(new Date(Date.now() + 5 * 60 * 1000))
+      setFrequency('none')
+      setIntervalValue(1)
+      setUntilAt(null)
+      setOccurrenceCount('')
+      setReminders([defaultReminder])
+      return
+    }
+
+    setTitle('')
+    setDescription('')
+    setIsAllDay(false)
+    setEventDatetime(null)
+    setFrequency('none')
+    setIntervalValue(1)
+    setUntilAt(null)
+    setOccurrenceCount('')
+    setReminders([defaultReminder])
+  }
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setSubmitMessage('')
@@ -207,6 +301,8 @@ function App() {
     }
   }
 
+  const referenceDate = useMemo(() => new Date(), [])
+
   return (
     <main className="layout">
       {submitMessage ? <div className={`toast ${submitStatus}`} role="status">{submitMessage}</div> : null}
@@ -228,7 +324,7 @@ function App() {
           <div className="grid two">
             <label>
               Event Type
-              <select value={type} onChange={(e) => setType(e.target.value as EventType)}>
+              <select value={type} onChange={(e) => handleEventTypeChange(e.target.value as EventType)}>
                 <option value="birthday">Birthday</option>
                 <option value="reminder">Reminder</option>
                 <option value="custom">Custom</option>
@@ -242,9 +338,54 @@ function App() {
               Description
               <textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
             </label>
+            <label className="full event-date-label">
+              Event Date &amp; Time
+              <div className="date-row">
+                <DatePicker
+                  required
+                  selected={eventDatetime}
+                  onChange={(date: Date | null) => setEventDatetime(date)}
+                  showTimeSelect={!isAllDay}
+                  showTimeSelectOnly={false}
+                  timeIntervals={15}
+                  dateFormat={isAllDay ? 'MMMM d, yyyy' : 'MMMM d, yyyy h:mm aa'}
+                  timeCaption="Time"
+                  isClearable
+                  placeholderText="Select date and time"
+                  className="date-picker-input"
+                  calendarClassName="date-picker-calendar"
+                />
+                <label className="all-day-toggle">
+                  <input
+                    type="checkbox"
+                    checked={isAllDay}
+                    onChange={(e) => setIsAllDay(e.target.checked)}
+                  />
+                  All day
+                </label>
+              </div>
+              {eventDatetime && (
+                <small className="field-help datetime-preview">
+                  {formatDatetimePreview(eventDatetime, timezone, isAllDay)} ({timezoneOffsetLabel(timezone, eventDatetime)})
+                </small>
+              )}
+            </label>
             <label>
               Timezone
-              <input required value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder="UTC" />
+              <select value={timezone} onChange={(e) => setTimezone(e.target.value)}>
+                {TIMEZONE_GROUPS.map((group) => (
+                  <optgroup key={group.region} label={group.region}>
+                    {group.options.map((tz) => (
+                      <option key={tz.value} value={tz.value}>
+                        {tz.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+              <small className="field-help timezone-offset">
+                {timezoneOffsetLabel(timezone, referenceDate)}
+              </small>
             </label>
             <label>
               Active Event
@@ -253,136 +394,159 @@ function App() {
                 <option value="false">No</option>
               </select>
             </label>
-            <label>
-              All-day Event
-              <select value={String(isAllDay)} onChange={(e) => setIsAllDay(e.target.value === 'true')}>
-                <option value="false">No</option>
-                <option value="true">Yes</option>
-              </select>
-            </label>
-            {isAllDay ? (
-              <label>
-                Event Date
-                <input required type="date" value={eventDate} onChange={(e) => setEventDate(e.target.value)} />
-              </label>
-            ) : (
-              <label>
-                Event At
-                <input
-                  required
-                  type="datetime-local"
-                  value={eventAt}
-                  onChange={(e) => setEventAt(e.target.value)}
-                />
-              </label>
-            )}
           </div>
         </section>
 
         <section className="card">
-          <h2>Recurrence</h2>
-          <p className="hint">
-            Recurrence controls how often the same event repeats. Use <strong>none</strong> for one-time events.
-          </p>
-          <div className="grid two">
-            <label>
-              Frequency
-              <select value={frequency} onChange={(e) => setFrequency(e.target.value as RecurrenceType)}>
-                <option value="none">None</option>
-                <option value="daily">Daily</option>
-                <option value="weekly">Weekly</option>
-                <option value="monthly">Monthly</option>
-                <option value="yearly">Yearly</option>
-              </select>
-            </label>
-            <label>
-              Interval Value
-              <input
-                min={1}
-                required
-                type="number"
-                value={intervalValue}
-                onChange={(e) => setIntervalValue(Number(e.target.value))}
-              />
-              <small className="field-help">
-                Multiplier of the selected frequency. Example: weekly + 2 means every 2 weeks.
-              </small>
-            </label>
-            <label>
-              Until At (optional)
-              <input type="datetime-local" value={untilAt} onChange={(e) => setUntilAt(e.target.value)} />
-              <small className="field-help">Stop generating future occurrences after this date/time.</small>
-            </label>
-            <label>
-              Occurrence Count (optional)
-              <input
-                min={1}
-                type="number"
-                value={occurrenceCount}
-                onChange={(e) => setOccurrenceCount(e.target.value)}
-              />
-              <small className="field-help">
-                Maximum number of times this event can repeat (leave empty for no count limit).
-              </small>
-            </label>
-          </div>
-        </section>
-
-        <section className="card">
-          <div className="section-head">
-            <h2>Reminders</h2>
-            <button type="button" className="secondary" onClick={addReminder}>
-              Add reminder
+          <div className="section-head optional-section-head">
+            <div>
+              <h2>
+                Recurrence <span className="optional-pill">Optional</span>
+              </h2>
+              <p className="hint optional-summary">
+                {frequency === 'none' ? 'No repeat configured.' : `Repeats ${frequency} every ${intervalValue}.`}
+              </p>
+            </div>
+            <button type="button" className="secondary" onClick={() => setShowRecurrenceOptions((current) => !current)}>
+              {showRecurrenceOptions ? 'Hide recurrence' : 'Show recurrence'}
             </button>
           </div>
-          <p className="hint">
-            Each reminder is relative to each event occurrence. Negative offset = before, 0 = exactly at event time,
-            positive offset = after.
-          </p>
-          <div className="stack">
-            {reminders.map((reminder, index) => (
-              <div className="reminder-row" key={index}>
+          {showRecurrenceOptions ? (
+            <>
+              <p className="hint">
+                Optional settings for repeated events. Use <strong>none</strong> for one-time events.
+              </p>
+              <div className="grid two optional-panel">
                 <label>
-                  Offset Minutes
-                  <input
-                    type="number"
-                    value={reminder.offsetMinutes}
-                    onChange={(e) => handleReminderChange(index, 'offsetMinutes', e.target.value)}
-                  />
-                </label>
-                <label>
-                  Message Template (optional)
-                  <input
-                    value={reminder.messageTemplate}
-                    onChange={(e) => handleReminderChange(index, 'messageTemplate', e.target.value)}
-                  />
-                </label>
-                <label>
-                  Active
-                  <select
-                    value={String(reminder.isActive)}
-                    onChange={(e) => handleReminderChange(index, 'isActive', e.target.value === 'true')}
-                  >
-                    <option value="true">Yes</option>
-                    <option value="false">No</option>
+                  Frequency
+                  <select value={frequency} onChange={(e) => setFrequency(e.target.value as RecurrenceType)}>
+                    <option value="none">None</option>
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                    <option value="yearly">Yearly</option>
                   </select>
                 </label>
-                <button type="button" className="danger" onClick={() => removeReminder(index)}>
-                  Remove
-                </button>
+                <label>
+                  Interval Value
+                  <input
+                    min={1}
+                    required
+                    type="number"
+                    value={intervalValue}
+                    onChange={(e) => setIntervalValue(Number(e.target.value))}
+                  />
+                  <small className="field-help">
+                    Multiplier of the selected frequency. Example: weekly + 2 means every 2 weeks.
+                  </small>
+                </label>
+                <label>
+                  Until At (optional)
+                  <DatePicker
+                    selected={untilAt}
+                    onChange={(date: Date | null) => setUntilAt(date)}
+                    showTimeSelect
+                    timeIntervals={15}
+                    dateFormat="MMMM d, yyyy h:mm aa"
+                    timeCaption="Time"
+                    isClearable
+                    placeholderText="No end date"
+                    className="date-picker-input"
+                    calendarClassName="date-picker-calendar"
+                  />
+                  <small className="field-help">Stop generating future occurrences after this date/time.</small>
+                </label>
+                <label>
+                  Occurrence Count (optional)
+                  <input
+                    min={1}
+                    type="number"
+                    value={occurrenceCount}
+                    onChange={(e) => setOccurrenceCount(e.target.value)}
+                  />
+                  <small className="field-help">
+                    Maximum number of times this event can repeat (leave empty for no count limit).
+                  </small>
+                </label>
               </div>
-            ))}
+            </>
+          ) : null}
+        </section>
+
+        <section className="card">
+          <div className="section-head optional-section-head">
+            <div>
+              <h2>
+                Reminders <span className="optional-pill">Optional</span>
+              </h2>
+              <p className="hint optional-summary">
+                {reminders.length} {reminders.length === 1 ? 'reminder' : 'reminders'} configured.
+              </p>
+            </div>
+            <button type="button" className="secondary" onClick={() => setShowReminderOptions((current) => !current)}>
+              {showReminderOptions ? 'Hide reminders' : 'Show reminders'}
+            </button>
           </div>
+          {showReminderOptions ? (
+            <>
+              <p className="hint">
+                Optional reminder customizations. Negative offset = before, 0 = exactly at event time, positive offset =
+                after.
+              </p>
+              <button type="button" className="secondary add-reminder-button" onClick={addReminder}>
+                Add reminder
+              </button>
+              <div className="stack optional-panel">
+                {reminders.map((reminder, index) => (
+                  <div className="reminder-row" key={index}>
+                    <label>
+                      Offset Minutes
+                      <input
+                        type="number"
+                        value={reminder.offsetMinutes}
+                        onChange={(e) => handleReminderChange(index, 'offsetMinutes', e.target.value)}
+                      />
+                    </label>
+                    <label>
+                      Message Template (optional)
+                      <input
+                        value={reminder.messageTemplate}
+                        onChange={(e) => handleReminderChange(index, 'messageTemplate', e.target.value)}
+                      />
+                    </label>
+                    <label>
+                      Active
+                      <select
+                        value={String(reminder.isActive)}
+                        onChange={(e) => handleReminderChange(index, 'isActive', e.target.value === 'true')}
+                      >
+                        <option value="true">Yes</option>
+                        <option value="false">No</option>
+                      </select>
+                    </label>
+                    <button type="button" className="danger" onClick={() => removeReminder(index)}>
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : null}
         </section>
 
         <section className="card">
           <h2>Submit</h2>
-          <p className="hint">Request target: {ENV.apiBaseUrl}/api/v1/events</p>
-          <button type="submit" className="primary">
-            Create Event
-          </button>
+          {/* <p className="hint">Request target: {ENV.apiBaseUrl}/api/v1/events</p> */}
+          <div className="submit-actions">
+            <button type="submit" className="primary">
+              Create Event
+            </button>
+            <button type="button" className="secondary" onClick={() => setShowSubmitInfo((current) => !current)}>
+              {showSubmitInfo ? 'Hide submit info' : 'Show submit info'}
+            </button>
+          </div>
           {submitMessage ? <p className={`submit-message ${submitStatus}`}>{submitMessage}</p> : null}
-          <pre>{JSON.stringify(payloadPreview, null, 2)}</pre>
+          {showSubmitInfo ? <pre>{JSON.stringify(payloadPreview, null, 2)}</pre> : null}
         </section>
       </form>
     </main>
